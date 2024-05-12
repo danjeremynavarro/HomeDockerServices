@@ -1,0 +1,67 @@
+name: personal-app
+services:
+  mariadb:
+    image: mariadb:latest
+    restart: unless-stopped
+    env_file:
+      - ./mariadb.env
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb-vol:/var/lib/mysql
+      - ../mariadb/conf.d:/etc/mysql/conf.d
+
+  traefik:
+    image: "traefik:v3.0"
+    container_name: "traefik"
+    command:
+      - "--api.dashboard=true"
+      - "--log.level=DEBUG"
+      - "--accesslog=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entryPoints.web.address=:80"
+      - "--entryPoints.websecure.address=:443"
+      - "--certificatesresolvers.presolver.acme.email=danjeremynavarro@gmail.com"
+      - "--certificatesresolvers.presolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.presolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.presolver.acme.httpchallenge.entrypoint=web"
+      - "--log.filePath=/log/traefik/traefik.log"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}.com`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=auth"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.tls.certresolver=presolver"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_AUTH}"
+    ports:
+      - "80:80"
+      - "8080:8080"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik-log:/log"
+      - "traefik-vol:/letsencrypt"
+
+  whoami:
+    image: "traefik/whoami"
+    container_name: "simple-service"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN}.com`)"
+      - "traefik.http.routers.whoami.entrypoints=websecure"
+      - "traefik.http.routers.whoami.tls=true"
+      - "traefik.http.routers.whoami.tls.certresolver=presolver"
+  
+  linux: # For logs or mounting volumes
+    image: "alpine:latest"
+    command: "tail -f /dev/null"
+    volumes:
+     - "traefik-log:/mnt/log"
+
+volumes:
+  mariadb-vol:
+  traefik-vol:
+  traefik-log:
