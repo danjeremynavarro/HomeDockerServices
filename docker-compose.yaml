@@ -14,6 +14,7 @@ services:
   traefik:
     image: "traefik:v3.0"
     container_name: "traefik"
+    restart: unless-stopped
     command:
       - "--api.dashboard=true"
       - "--log.level=DEBUG"
@@ -29,7 +30,7 @@ services:
       - "--log.filePath=/log/traefik/traefik.log"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}.com`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.middlewares=auth"
       - "traefik.http.routers.dashboard.tls=true"
@@ -50,18 +51,121 @@ services:
     container_name: "simple-service"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN}.com`)"
-      - "traefik.http.routers.whoami.entrypoints=websecure"
-      - "traefik.http.routers.whoami.tls=true"
-      - "traefik.http.routers.whoami.tls.certresolver=presolver"
+      #http
+      - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.to-https.redirectscheme.port=443"
+      - "traefik.http.middlewares.to-https.redirectscheme.permanent=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN}`)"
+      - "traefik.http.routers.whoami.middlewares=to-https"
+      - "traefik.http.routers.whoami.entrypoints=web"
+      #https
+      - "traefik.http.routers.whoami-secure.rule=Host(`whoami.${DOMAIN}`)"
+      - "traefik.http.routers.whoami-secure.entrypoints=websecure"
+      - "traefik.http.routers.whoami-secure.tls=true"
+      - "traefik.http.routers.whoami-secure.tls.certresolver=presolver"
+
   
+  nextcloud:
+    image: nextcloud
+    restart: unless-stopped
+    env_file:
+      - ./nextcloud.env
+    ports:
+      - "3081:80"
+    volumes:
+      - "nextcloud-vol:/var/www/html"
+    depends_on:
+      - mariadb
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      #http
+      - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.to-https.redirectscheme.port=443"
+      - "traefik.http.middlewares.to-https.redirectscheme.permanent=true"
+      - "traefik.http.routers.nextcloud.rule=Host(`cloud.${DOMAIN}`)"
+      - "traefik.http.routers.nextcloud.middlewares=to-https"
+      - "traefik.http.routers.nextcloud.entrypoints=web"
+      # headers
+      - "traefik.http.middlewares.nextcloud-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.nextcloud-headers.headers.stsSeconds=15552000"
+      - "traefik.http.routers.nexcloud.middlewares=nextcloud-headers"
+      - "traefik.http.routers.nexcloud-secure.middlewares=nextcloud-headers"
+      #https
+      - "traefik.http.routers.nextcloud-secure.rule=Host(`cloud.${DOMAIN}`)"
+      - "traefik.http.routers.nextcloud-secure.entrypoints=websecure"
+      - "traefik.http.routers.nextcloud-secure.tls=true"
+      - "traefik.http.routers.nextcloud-secure.tls.certresolver=presolver"
+  
+  wordpress:
+    image: wordpress
+    restart: unless-stopped
+    env_file:
+      - "./wordpress.env"
+    ports:
+      - '4082:80'
+    volumes:
+      - "wordpress-vol:/var/www/html"
+    depends_on:
+      - "mariadb"
+      - "traefik"
+    labels:
+      - "traefik.enable=true"
+      #http
+      - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.to-https.redirectscheme.port=443"
+      - "traefik.http.middlewares.to-https.redirectscheme.permanent=true"
+      - "traefik.http.routers.wordpress.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.wordpress.middlewares=to-https"
+      - "traefik.http.routers.wordpress.entrypoints=web"
+      #https
+      - "traefik.http.routers.wordpress-secure.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.wordpress-secure.entrypoints=websecure"
+      - "traefik.http.routers.wordpress-secure.tls=true"
+      - "traefik.http.routers.wordpress-secure.tls.certresolver=presolver"
+
   linux: # For logs or mounting volumes
     image: "alpine:latest"
     command: "tail -f /dev/null"
     volumes:
-     - "traefik-log:/mnt/log"
+     - "traefik-log:/mnt/traefik-log"
+     - "nextcloud-vol:/mnt/nextcloud-vol"
+     - "mariadb-vol:/mnt/mariadb-vol"
+     - "traefik-vol:/mnt/traefik-vol"
+     - "wordpress-vol:/mnt/wordpress-vol"
+     - "./vol-backup:/mnt/vol-backup"
+  
+  calibre:
+    image: lscr.io/linuxserver/calibre:latest
+    container_name: calibre
+    security_opt:
+      - seccomp:unconfined #optional
+    env_file:
+      - calibre.env
+    volumes:
+      - calibre-vol:/config
+
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      # http
+      - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.to-https.redirectscheme.port=443"
+      - "traefik.http.middlewares.to-https.redirectscheme.permanent=true"
+      - "traefik.http.routers.calibre.rule=Host(`calibre.${DOMAIN}`)"
+      # - "traefik.http.routers.calibre.middlewares=to-https"
+      - "traefik.http.routers.calibre.entrypoints=web"
+      #https
+      - "traefik.http.routers.calibre-secure.rule=Host(`calibre.${DOMAIN}`)"
+      - "traefik.http.routers.calibre-secure.entrypoints=websecure"
+      - "traefik.http.routers.calibre-secure.tls=true"
+      - "traefik.http.routers.calibre-secure.tls.certresolver=presolver"
+      - "traefik.http.services.calibre-secure.loadbalancer.server.port=1080"
 
 volumes:
   mariadb-vol:
   traefik-vol:
   traefik-log:
+  nextcloud-vol:
+  wordpress-vol:
+  calibre-vol:
