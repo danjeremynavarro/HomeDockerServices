@@ -21,6 +21,8 @@ services:
       - "--accesslog=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
       - "--entryPoints.web.address=:80"
       - "--entryPoints.websecure.address=:443"
       - "--certificatesresolvers.presolver.acme.email=danjeremynavarro@gmail.com"
@@ -46,24 +48,36 @@ services:
       - "traefik-log:/log"
       - "traefik-vol:/letsencrypt"
 
-  whoami:
-    image: "traefik/whoami"
-    container_name: "simple-service"
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+        - "prometheus-vol:/prometheus"
+        - "../prometheus/:/etc/prometheus/"
+
+  grafana:
+    image: grafana/grafana-enterprise
+    env_file:
+      - ./grafana.env
+    ports:
+      - "3000:3000"
+    volumes:
+      - "grafana-vol:/var/lib/grafana"
     labels:
       - "traefik.enable=true"
       #http
       - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.to-https.redirectscheme.port=443"
       - "traefik.http.middlewares.to-https.redirectscheme.permanent=true"
-      - "traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN}`)"
-      - "traefik.http.routers.whoami.middlewares=to-https"
-      - "traefik.http.routers.whoami.entrypoints=web"
+      - "traefik.http.routers.monitoring.rule=Host(`monitoring.${DOMAIN}`)"
+      - "traefik.http.routers.monitoring.middlewares=to-https"
+      - "traefik.http.routers.monitoring.entrypoints=web"
       #https
-      - "traefik.http.routers.whoami-secure.rule=Host(`whoami.${DOMAIN}`)"
-      - "traefik.http.routers.whoami-secure.entrypoints=websecure"
-      - "traefik.http.routers.whoami-secure.tls=true"
-      - "traefik.http.routers.whoami-secure.tls.certresolver=presolver"
-
+      - "traefik.http.routers.monitoring-secure.rule=Host(`monitoring.${DOMAIN}`)"
+      - "traefik.http.routers.monitoring-secure.entrypoints=websecure"
+      - "traefik.http.routers.monitoring-secure.tls=true"
+      - "traefik.http.routers.monitoring-secure.tls.certresolver=presolver"
   
   nextcloud:
     image: nextcloud
@@ -120,17 +134,6 @@ services:
       - "traefik.http.routers.wordpress-secure.tls=true"
       - "traefik.http.routers.wordpress-secure.tls.certresolver=presolver"
 
-  linux: # For logs or mounting volumes
-    image: "alpine:latest"
-    command: "tail -f /dev/null"
-    volumes:
-     - "traefik-log:/mnt/traefik-log"
-     - "nextcloud-vol:/mnt/nextcloud-vol"
-     - "mariadb-vol:/mnt/mariadb-vol"
-     - "traefik-vol:/mnt/traefik-vol"
-     - "wordpress-vol:/mnt/wordpress-vol"
-     - "./vol-backup:/mnt/vol-backup"
-  
   calibre:
     image: lscr.io/linuxserver/calibre:latest
     container_name: calibre
@@ -240,6 +243,44 @@ services:
       - ${IMMICH_DB_DATA_LOCATION}:/var/lib/postgresql/data
     command: ["postgres", "-c" ,"shared_preload_libraries=vectors.so", "-c", 'search_path="$$user", public, vectors', "-c", "logging_collector=on", "-c", "max_wal_size=2GB", "-c", "shared_buffers=512MB", "-c", "wal_compression=on"]
 
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    volumes:
+    - /:/rootfs:ro
+    - /var/run:/var/run:rw
+    - /sys:/sys:ro
+    - /var/lib/docker/:/var/lib/docker:ro
+
+  # whoami:
+  #   image: "traefik/whoami"
+  #   container_name: "simple-service"
+  #   labels:
+  #     - "traefik.enable=true"
+  #     #http
+  #     - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
+  #     - "traefik.http.middlewares.to-https.redirectscheme.port=443"
+  #     - "traefik.http.middlewares.to-https.redirectscheme.permanent=true"
+  #     - "traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN}`)"
+  #     - "traefik.http.routers.whoami.middlewares=to-https"
+  #     - "traefik.http.routers.whoami.entrypoints=web"
+  #     #https
+  #     - "traefik.http.routers.whoami-secure.rule=Host(`whoami.${DOMAIN}`)"
+  #     - "traefik.http.routers.whoami-secure.entrypoints=websecure"
+  #     - "traefik.http.routers.whoami-secure.tls=true"
+  #     - "traefik.http.routers.whoami-secure.tls.certresolver=presolver"
+  
+  # linux: # For logs or mounting volumes
+  #   image: "alpine:latest"
+  #   command: "tail -f /dev/null"
+  #   volumes:
+  #    - "traefik-log:/mnt/traefik-log"
+  #    - "nextcloud-vol:/mnt/nextcloud-vol"
+  #    - "mariadb-vol:/mnt/mariadb-vol"
+  #    - "traefik-vol:/mnt/traefik-vol"
+  #    - "wordpress-vol:/mnt/wordpress-vol"
+  #    - "./vol-backup:/mnt/vol-backup"
+  
 volumes:
   mariadb-vol:
   traefik-vol:
@@ -250,3 +291,6 @@ volumes:
   postgres-vol:
   immich-vol:
   model-cache:
+  prometheus-vol:
+  grafana-vol:
+
