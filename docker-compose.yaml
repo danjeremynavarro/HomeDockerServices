@@ -1,7 +1,7 @@
 name: personal-app
 services:
   mariadb:
-    image: mariadb:latest
+    image: mariadb:11.4.2
     restart: unless-stopped
     env_file:
       - ./mariadb.env
@@ -25,6 +25,7 @@ services:
       - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
       - "--entryPoints.web.address=:80"
       - "--entryPoints.websecure.address=:443"
+      - "--entryPoints.websecure.transport.respondingTimeouts.readTimeout=0s"
       - "--certificatesresolvers.presolver.acme.email=danjeremynavarro@gmail.com"
       - "--certificatesresolvers.presolver.acme.httpchallenge=true"
       - "--certificatesresolvers.presolver.acme.storage=/letsencrypt/acme.json"
@@ -50,6 +51,7 @@ services:
 
   prometheus:
     image: prom/prometheus
+    restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
@@ -62,6 +64,7 @@ services:
       - ./grafana.env
     ports:
       - "3000:3000"
+    restart: unless-stopped
     volumes:
       - "grafana-vol:/var/lib/grafana"
     labels:
@@ -78,7 +81,15 @@ services:
       - "traefik.http.routers.monitoring-secure.entrypoints=websecure"
       - "traefik.http.routers.monitoring-secure.tls=true"
       - "traefik.http.routers.monitoring-secure.tls.certresolver=presolver"
+    depends_on:
+      - mariadb
+      - traefik
   
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
   nextcloud:
     image: nextcloud
     restart: unless-stopped
@@ -246,40 +257,14 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: cadvisor
+    restart: unless-stopped
     volumes:
     - /:/rootfs:ro
     - /var/run:/var/run:rw
     - /sys:/sys:ro
     - /var/lib/docker/:/var/lib/docker:ro
-
-  # whoami:
-  #   image: "traefik/whoami"
-  #   container_name: "simple-service"
-  #   labels:
-  #     - "traefik.enable=true"
-  #     #http
-  #     - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
-  #     - "traefik.http.middlewares.to-https.redirectscheme.port=443"
-  #     - "traefik.http.middlewares.to-https.redirectscheme.permanent=true"
-  #     - "traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN}`)"
-  #     - "traefik.http.routers.whoami.middlewares=to-https"
-  #     - "traefik.http.routers.whoami.entrypoints=web"
-  #     #https
-  #     - "traefik.http.routers.whoami-secure.rule=Host(`whoami.${DOMAIN}`)"
-  #     - "traefik.http.routers.whoami-secure.entrypoints=websecure"
-  #     - "traefik.http.routers.whoami-secure.tls=true"
-  #     - "traefik.http.routers.whoami-secure.tls.certresolver=presolver"
-  
-  # linux: # For logs or mounting volumes
-  #   image: "alpine:latest"
-  #   command: "tail -f /dev/null"
-  #   volumes:
-  #    - "traefik-log:/mnt/traefik-log"
-  #    - "nextcloud-vol:/mnt/nextcloud-vol"
-  #    - "mariadb-vol:/mnt/mariadb-vol"
-  #    - "traefik-vol:/mnt/traefik-vol"
-  #    - "wordpress-vol:/mnt/wordpress-vol"
-  #    - "./vol-backup:/mnt/vol-backup"
+    depends_on:
+      - traefik
   
 volumes:
   mariadb-vol:
