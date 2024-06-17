@@ -10,6 +10,7 @@ services:
     volumes:
       - mariadb-vol:/var/lib/mysql
       - ../mariadb/conf.d:/etc/mysql/conf.d
+    user: ${UID}:${GID}
 
   traefik:
     image: "traefik:v3.0"
@@ -51,6 +52,7 @@ services:
 
   prometheus:
     image: prom/prometheus
+    user: ${UID}:${GID}
     restart: unless-stopped
     ports:
       - "9090:9090"
@@ -60,6 +62,7 @@ services:
 
   grafana:
     image: grafana/grafana-enterprise
+    user: ${UID}:${GID}
     env_file:
       - ./grafana.env
     ports:
@@ -92,6 +95,7 @@ services:
 
   nextcloud:
     image: nextcloud
+    user: ${UID}:${GID}
     restart: unless-stopped
     env_file:
       - ./nextcloud.env
@@ -122,6 +126,7 @@ services:
   
   wordpress:
     image: wordpress
+    user: ${UID}:${GID}
     restart: unless-stopped
     env_file:
       - "./wordpress.env"
@@ -174,6 +179,7 @@ services:
 
   immich-server:
     container_name: immich_server
+    user: ${UID}:${GID}
     image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
     command: ['start.sh', 'immich']
     volumes:
@@ -205,6 +211,7 @@ services:
 
   immich-microservices:
     container_name: immich_microservices
+    user: ${UID}:${GID}
     image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
     # extends: # uncomment this section for hardware acceleration - see https://immich.app/docs/features/hardware-transcoding
     #   file: hwaccel.transcoding.yml
@@ -222,6 +229,7 @@ services:
 
   immich-machine-learning:
     container_name: immich_machine_learning
+    user: ${UID}:${GID}
     # For hardware acceleration, add one of -[armnn, cuda, openvino] to the image tag.
     # Example tag: ${IMMICH_VERSION:-release}-cuda
     image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
@@ -236,11 +244,13 @@ services:
 
   redis:
     container_name: immich_redis
+    user: ${UID}:${GID}
     image: registry.hub.docker.com/library/redis:6.2-alpine@sha256:84882e87b54734154586e5f8abd4dce69fe7311315e2fc6d67c29614c8de2672
     restart: unless-stopped
 
   database:
     container_name: immich_postgres
+    user: ${UID}:${GID}
     image: registry.hub.docker.com/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0
     restart: unless-stopped
     env_file:
@@ -256,7 +266,6 @@ services:
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor
     restart: unless-stopped
     volumes:
     - /:/rootfs:ro
@@ -266,16 +275,107 @@ services:
     depends_on:
       - traefik
   
+  ittools:
+    image: ghcr.io/corentinth/it-tools:latest
+    restart: unless-stopped
+    depends_on:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      # http
+      - "traefik.http.middlewares.to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.to-https.redirectscheme.port=443"
+      - "traefik.http.middlewares.to-https.redirectscheme.permanent=true"
+      - "traefik.http.routers.tools.rule=Host(`tools.${DOMAIN}`)"
+      - "traefik.http.routers.tools.middlewares=to-https"
+      - "traefik.http.routers.tools.entrypoints=web"
+      #https
+      - "traefik.http.routers.tools-secure.rule=Host(`tools.${DOMAIN}`)"
+      - "traefik.http.routers.tools-secure.entrypoints=websecure"
+      - "traefik.http.routers.tools-secure.tls=true"
+      - "traefik.http.routers.tools-secure.tls.certresolver=presolver"
+    
+  # alpine:
+  #   image: debian:latest
+  #   user: ${USER}
+  #   command: tail -f /dev/null
+  #   volumes:
+  #     - "/zfs-pool/vol/data/:/backups"
+  #     - "mariadb-vol:/data/mariadb-vol"
+  #     - "traefik-vol:/data/traefik-vol"
+  #     - "nextcloud-vol:/data/nextcloud-vol"
+  #     - "wordpress-vol:/data/wordpress-vol"
+  #     - "calibre-vol:/data/calibre-vol"
+  #     - "postgres-vol:/data/postgres-vol"
+  #     - "immich-vol:/data/immich-vol"
+  #     - "model-cache:/data/model-cache"
+  #     - "prometheus-vol:/data/prometheus-vol"
+  #     - "grafana-vol:/data/grafana-vol"
+
 volumes:
   mariadb-vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/mariadb-vol
   traefik-vol:
+    driver: local 
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/traefik-vol
   traefik-log:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/traefik-log
   nextcloud-vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/nextcloud-vol
   wordpress-vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/wordpress-vol
   calibre-vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/calibre-vol
   postgres-vol:
+    driver: local 
+    driver_opts: 
+      type: none
+      o: bind
+      device: /zfs-pool/mount/postgres-vol 
   immich-vol:
+    driver: local 
+    driver_opts: 
+      type: none
+      o: bind
+      device: /zfs-pool/mount/immich-vol 
   model-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/immich-vol
   prometheus-vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/prometheus-vol
   grafana-vol:
-
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/grafana-vol
