@@ -22,6 +22,8 @@ services:
       - "--accesslog=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/fileprovider"
+      - "--providers.file.watch=true"
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
       - "--entryPoints.web.address=:80"
@@ -49,6 +51,7 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "traefik-log:/log"
       - "traefik-vol:/letsencrypt"
+      - "./traefik:/fileprovider"
 
   prometheus:
     image: prom/prometheus
@@ -159,7 +162,6 @@ services:
       - calibre.env
     volumes:
       - ./books:/config
-
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -294,6 +296,33 @@ services:
       - "traefik.http.routers.tools-secure.entrypoints=websecure"
       - "traefik.http.routers.tools-secure.tls=true"
       - "traefik.http.routers.tools-secure.tls.certresolver=presolver"
+  
+  homeassistant:
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    volumes:
+      - "./homeassistant:/config"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/run/dbus:/run/dbus:ro"
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: transmission
+    environment:
+      - PUID=${UID}
+      - PGID=${GID}
+    volumes:
+      - ../transmission:/config
+      - transmission-download-vol:/downloads
+      - transmission-watch-vol:/watch
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
+    restart: unless-stopped
+
     
   # alpine:
   #   image: debian:latest
@@ -312,6 +341,7 @@ services:
   #     - "prometheus-vol:/data/prometheus-vol"
   #     - "grafana-vol:/data/grafana-vol"
 
+
 volumes:
   mariadb-vol:
     driver: local
@@ -319,6 +349,18 @@ volumes:
       type: none
       o: bind
       device: /zfs-pool/mount/mariadb-vol
+  transmission-download-vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/transmission-vol/downloads
+  transmission-watch-vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /zfs-pool/mount/transmission-vol/watch
   traefik-vol:
     driver: local 
     driver_opts:
